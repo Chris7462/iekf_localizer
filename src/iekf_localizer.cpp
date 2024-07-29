@@ -13,7 +13,7 @@ namespace iekf_localizer
 {
 
 IEKFLocalizer::IEKFLocalizer()
-: Node("iekf_localizer_node"), freq_{40.0}, time_prev_(), init_{false}
+: Node("iekf_localizer_node"), freq_{40.0}, dt_{1.0 / freq_}
 {
   rclcpp::QoS qos(10);
 
@@ -34,7 +34,7 @@ IEKFLocalizer::IEKFLocalizer()
   P_.setZero();
 
   // Initial control
-  u_noisy_ << 5.5, 0.0, 0.0, 0.0, 0.0, 0.0;
+  u_noisy_ << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
   u_sigmas_ << 0.1, 0.1, 0.1, 0.1, 0.1, 0.1;
   U_ = (u_sigmas_ * u_sigmas_).matrix().asDiagonal();
 
@@ -56,90 +56,75 @@ void IEKFLocalizer::gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr ms
 {
   std::lock_guard<std::mutex> lock(mtx_);
   gps_buff_.push(msg);
-  RCLCPP_INFO(get_logger(), "Get GPS");
 }
 
 void IEKFLocalizer::vel_callback(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
-  RCLCPP_INFO(get_logger(), "Get Velocity");
-  // RCLCPP_INFO_STREAM(get_logger(), "Vel = " << u_noisy_.transpose());
+  std::lock_guard<std::mutex> lock(mtx_);
   u_noisy_ << msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z,
               msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z;
 }
 
 void IEKFLocalizer::run_ekf()
 {
-  RCLCPP_INFO(get_logger(), "Running IEKF!");
-  RCLCPP_INFO_STREAM(get_logger(), "before X_ = " << X_.translation().transpose());
+  RCLCPP_INFO_ONCE(get_logger(), "Running IEKF!");
+  rclcpp::Time time_current = rclcpp::Node::now();
+  u_ = (u_noisy_ * dt_);
 
+  // State estimation
+  X_ = X_.rplus(u_, J_x_, J_u_);
+  P_ = J_x_ * P_ * J_x_.transpose() + J_u_ * U_ * J_u_.transpose();
 
-  if (!init_) {
-    time_prev_ = rclcpp::Node::now();
-    init_ = true;
-  } else {
-    rclcpp::Time time_current = rclcpp::Node::now();
-    double dt = (time_current - time_prev_).seconds();
-    time_prev_ = time_current;
+  // Run gps update
+  if (!gps_buff_.empty()) {
+    mtx_.lock();
+    if ((time_current - rclcpp::Time(gps_buff_.front()->header.stamp)).seconds() > 0.1) {  // time sync has problem
+      gps_buff_.pop();
+      RCLCPP_WARN(get_logger(), "Timestamp unaligned, please check your GPS data.");
+      mtx_.unlock();
+    } else {
+      auto msg = gps_buff_.front();
+      gps_buff_.pop();
+      mtx_.unlock();
 
-    u_ = (u_noisy_ * dt);
+      // measurement
+      Eigen::Vector3d y(msg->latitude , msg->longitude, msg->altitude);
+      Eigen::Matrix3d R;
+      R.setZero();
+      R.diagonal() << msg->position_covariance.at(0), msg->position_covariance.at(4), msg->position_covariance.at(8);
 
-    // State estimation
-    X_ = X_.rplus(u_, J_x_, J_u_);
-    P_ = J_x_ * P_ * J_x_.transpose() + J_u_ * U_ * J_u_.transpose();
+      // expection
+      Eigen::Matrix<double, 3, 6> J_e_x;
+      Eigen::Vector3d e = X_.act(Eigen::Vector3d::Zero(), J_e_x);
+      Eigen::Matrix<double, 3, 6> H = J_e_x;
 
-    // Run gps update
-    if (!gps_buff_.empty()) {
-      mtx_.lock();
-      if ((time_current - rclcpp::Time(gps_buff_.front()->header.stamp)).seconds() > 0.1) {  // time sync has problem
-        gps_buff_.pop();
-        RCLCPP_WARN(get_logger(), "Timestamp unaligned, please check your GPS data.");
-        mtx_.unlock();
-      } else {
-        auto msg = gps_buff_.front();
-        gps_buff_.pop();
-        mtx_.unlock();
+      //// Change the covariance from right to left
+      //Matrix6d LP = X_.adj().inverse() * P_ * X_.adj().transpose().inverse();
+      //Eigen::Matrix3d E = H * LP * H.transpose();
+      Eigen::Matrix3d E = H * P_ * H.transpose();
 
-        // measurement
-        Eigen::Vector3d y(msg->latitude , msg->longitude, msg->altitude);
-        Eigen::Matrix3d R;
-        R.setZero();
-        R.diagonal() << msg->position_covariance.at(0), msg->position_covariance.at(4), msg->position_covariance.at(8);
-        RCLCPP_INFO_STREAM(get_logger(), "GPS = " << y.transpose());
+      // innovation
+      Eigen::Vector3d z = y - e;  // innovation
+      Eigen::Matrix3d Z = E + R;  // innovation cov
 
-        // expection
-        Eigen::Matrix<double, 3, 6> J_e_x;
-        Eigen::Vector3d e = X_.act(Eigen::Vector3d::Zero(), J_e_x);
-        Eigen::Matrix<double, 3, 6> H = J_e_x;
+      // Kalman gain
+      //Eigen::Matrix<double, 6, 3> K = LP * H.transpose() * Z.inverse();
+      Eigen::Matrix<double, 6, 3> K = P_ * H.transpose() * Z.inverse();
 
-        //// Change the covariance from right to left
-        //Matrix6d LP = X_.adj().inverse() * P_ * X_.adj().transpose().inverse();
-        //Eigen::Matrix3d E = H * LP * H.transpose();
-        Eigen::Matrix3d E = H * P_ * H.transpose();
+      // Correction step
+      manif::SE3Tangentd dx = K * z;
 
-        // innovation
-        Eigen::Vector3d z = y - e;
-        Eigen::Matrix3d Z = E + R;
+      // Update
+      //X_ = X_.lplus(dx);
+      //LP = LP - K * Z * K.transpose();
 
-        // Kalman gain
-        //Eigen::Matrix<double, 6, 3> K = LP * H.transpose() * Z.inverse();
-        Eigen::Matrix<double, 6, 3> K = P_ * H.transpose() * Z.inverse();
+      X_ = X_.rplus(dx);
+      P_ = P_ - K * Z * K.transpose();
 
-        // Correction step
-        manif::SE3Tangentd dx = K * z;
-
-        // Update
-        //X_ = X_.lplus(dx);
-        //LP = LP - K * Z * K.transpose();
-
-        X_ = X_.rplus(dx);
-        P_ = P_ - K * Z * K.transpose();
-
-        //// Change the covariance from the left to right
-        //P_ = X_.adj() * LP * X_.adj().transpose();
-      }
+      //// Change the covariance from the left to right
+      //P_ = X_.adj() * LP * X_.adj().transpose();
     }
   }
-  RCLCPP_INFO_STREAM(get_logger(), "After X_ = " << X_.translation().transpose());
 
   // publish map to base link TF
   Eigen::Vector3d t_current(X_.translation());
@@ -157,4 +142,4 @@ void IEKFLocalizer::run_ekf()
   tf_broadcaster_->sendTransform(map_base_link_tf);
 }
 
-}  // namespace ekf_localizer
+}  // namespace iekf_localizer

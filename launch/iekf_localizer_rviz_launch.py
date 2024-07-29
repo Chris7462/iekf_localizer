@@ -13,8 +13,8 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     bag_exec = ExecuteProcess(
         cmd=['ros2', 'bag', 'play', '-r', '1.0',
-             '/data/kitti/raw/2011_09_30_drive_0018_sync_bag', '--clock']
-            # '/data/kitti/raw/2011_09_30_drive_0028_sync_bag', '--clock']
+            # '/data/kitti/raw/2011_09_30_drive_0018_sync_bag', '--clock']
+             '/data/kitti/raw/2011_09_30_drive_0028_sync_bag', '--clock']
     )
 
     # The TF and URDF of the vehicle
@@ -90,13 +90,13 @@ def generate_launch_description():
         robot_state_publisher_launch,
         rviz_node,
         TimerAction(
-            period=1.0,  # delay these nodes for 1.0 seconds.
+            period=1.0,  # delay these nodes for 1.0 seconds. Make sure the /clock topic is up
             actions=[
                 gps_shift_launch,
-                #trajectory_server_gps_node,
                 imu_rotate_launch,
                 iekf_localizer_launch,
-                #trajectory_server_ekf_node
+                trajectory_server_gps_node,
+                trajectory_server_ekf_node
             ]
         )
     ])

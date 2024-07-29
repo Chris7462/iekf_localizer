@@ -35,6 +35,7 @@ public:
 
 private:
   double freq_;
+  double dt_;
 
   // void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg);
   void gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
@@ -51,9 +52,6 @@ private:
   std::queue<sensor_msgs::msg::NavSatFix::SharedPtr> gps_buff_;
 
   std::mutex mtx_;
-
-  rclcpp::Time time_prev_;
-  bool init_;
 
   // State & Error covariance
   manif::SE3d X_;
