@@ -4,10 +4,7 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /RobotModel1/Status1
-        - /TF1/Status1
         - /TF1/Tree1
-        - /TF1/Tree1/map1
         - /GpsPath1/Topic1
         - /GpsPath1/Offset1
       Splitter Ratio: 0.5
@@ -148,6 +145,18 @@ Visualization Manager:
       Show Names: true
       Tree:
         map:
+          base_link:
+            gps_link:
+              {}
+            imu_link:
+              velo_link:
+                cam0_link:
+                  cam1_link:
+                    {}
+                  cam2_link:
+                    {}
+                  cam3_link:
+                    {}
           oxts_link:
             {}
       Update Interval: 0
@@ -161,7 +170,7 @@ Visualization Manager:
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
       Line Style: Billboards
-      Line Width: 0.07999999821186066
+      Line Width: 0.30000001192092896
       Name: IEKFPath
       Offset:
         X: 0
@@ -189,7 +198,7 @@ Visualization Manager:
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
       Line Style: Billboards
-      Line Width: 0.07999999821186066
+      Line Width: 0.30000001192092896
       Name: GpsPath
       Offset:
         X: 0

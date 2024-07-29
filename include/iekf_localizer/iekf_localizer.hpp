@@ -10,6 +10,7 @@
 // #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 
 // Eigen header
 #include <Eigen/Core>
@@ -44,10 +45,15 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr vel_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+
   // std::queue<sensor_msgs::msg::Imu::SharedPtr> imu_buff_;
   std::queue<sensor_msgs::msg::NavSatFix::SharedPtr> gps_buff_;
 
   std::mutex mtx_;
+
+  rclcpp::Time time_prev_;
+  bool init_;
 
   // State & Error covariance
   manif::SE3d X_;
@@ -60,7 +66,7 @@ private:
   Matrix6d U_;
 
   // Declare the Jacobians of the motion wrt robot and control
-  manif::SE3d::Jacobian J_x, J_u;
+  manif::SE3d::Jacobian J_x_, J_u_;
 
   void run_ekf();
 };
