@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(manif REQUIRED)
 
@@ -27,7 +28,8 @@ target_include_directories(iekf_localizer_node PUBLIC
 
 ament_target_dependencies(iekf_localizer_node PUBLIC
   rclcpp
-  sensor_msgs)
+  sensor_msgs
+  geometry_msgs)
 
 target_link_libraries(iekf_localizer_node PUBLIC
   Eigen3::Eigen
