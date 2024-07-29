@@ -56,65 +56,17 @@ void IEKFLocalizer::gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr ms
 
 void IEKFLocalizer::vel_callback(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
-  std::lock_guard<std::mutex> lock(mtx_);
-  vel_buff_.push(msg);
   RCLCPP_INFO(get_logger(), "Get Velocity");
+  u_noisy_ << msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z,
+              msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z;
+
+  u_ = u_noisy_;
 }
 
 void IEKFLocalizer::run_ekf()
 {
   RCLCPP_INFO(get_logger(), "Running IEKF!");
   rclcpp::Time time_current = rclcpp::Node::now();
-
-  ////// Run predict
-  //// predict requires the Imu measurement
-  //if (!imu_buff_.empty()) {
-  //  mtx_.lock();
-  //  if ((time_current - rclcpp::Time(imu_buff_.front()->header.stamp)).seconds() > 0.1) {  // time sync has problem
-  //    imu_buff_.pop();
-  //    RCLCPP_WARN(this->get_logger(), "Timestamp unaligned, please check your IMU data.");
-  //    mtx_.unlock();
-  //  } else {
-  //    auto msg = imu_buff_.front();
-  //    imu_buff_.pop();
-  //    mtx_.unlock();
-
-  //    alpha_prev_ << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
-  //    omega_prev_ << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
-  //  }
-  //}
-
-  // RCLCPP_INFO_STREAM(get_logger(), "alpha prev: = " << alpha_prev_.transpose());
-  // RCLCPP_INFO_STREAM(get_logger(), "omega prev: = " << omega_prev_.transpose());
-
-  //// get current state
-  //auto R_k = X_.rotation();
-  //auto v_k = X_.linearVelocity();
-  //auto acc_k = alpha_prev_ + R_k.transpose() * g_;
-  //// RCLCPP_INFO_STREAM(get_logger(), "acc : = " << acc_k.transpose());
-
-  //// update previous time for next propgagation
-  //double dt = (time_current - time_prev_).seconds();
-  //time_prev_ = time_current;
-
-  //// input control
-  //Eigen::Vector3d accLin = (R_k.transpose() * v_k) * dt + 0.5 * acc_k * dt * dt;
-  //Eigen::Vector3d gLin = R_k.transpose() * g_ * dt;
-  //Eigen::Matrix3d accLinCross = manif::skew(accLin);
-  //Eigen::Matrix3d gCross = manif::skew(gLin);
-
-  //u_ << accLin, omega_prev_ * dt, acc_k * dt;
-
-  //// State prediction
-  //X_ = X_.plus(u_, J_x_x_, J_x_u_); // X * exp(u), with Jacobians
-
-  //// Prepare Jacobian of state-dependent control vector
-  //J_u_x_.setZero();
-  //J_u_x_.block<3, 3>(0, 3) = accLinCross;
-  //J_u_x_.block<3, 3>(0, 6) = Eigen::Matrix3d::Identity() * dt;
-  //J_u_x_.block<3, 3>(6, 3) = gCross;
-  //F_ = J_x_x_ + J_x_u_ * J_u_x_;  // chain rule for system model Jacobian
-  //P_ = F_ * P_ * F_.transpose() + J_x_u_ * U_ * J_x_u_.transpose();
 
   // Run velocity update
   if (!vel_buff_.empty()) {
@@ -128,10 +80,6 @@ void IEKFLocalizer::run_ekf()
       vel_buff_.pop();
       mtx_.unlock();
 
-      u_noisy_ << msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z,
-                  msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z;
-
-      u_ = u_noisy_;
 
     //VelMeasurement z;
     //z.nu() = msg->twist.linear.x;
