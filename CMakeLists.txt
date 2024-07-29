@@ -12,10 +12,8 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(tf2_ros REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(manif REQUIRED)
 
 add_executable(iekf_localizer_node
   src/iekf_localizer_node.cpp
@@ -23,15 +21,17 @@ add_executable(iekf_localizer_node
 
 target_include_directories(iekf_localizer_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+  $<INSTALL_INTERFACE:include>
+  ${EIGEN3_INCLUDE_DIR}
+  ${manif_INCLUDE_DIRS})
 
 ament_target_dependencies(iekf_localizer_node PUBLIC
   rclcpp
-  sensor_msgs
-  geometry_msgs
-  tf2_ros
-  tf2
-  tf2_geometry_msgs)
+  sensor_msgs)
+
+target_link_libraries(iekf_localizer_node PUBLIC
+  Eigen3::Eigen
+  ${manif_LIBRARIES})
 
 target_compile_features(iekf_localizer_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
