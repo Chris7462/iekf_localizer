@@ -7,7 +7,6 @@
 
 // ROS header
 #include <rclcpp/rclcpp.hpp>
-// #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.h>
@@ -37,18 +36,15 @@ private:
   double freq_;
   double dt_;
 
-  // void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg);
   void gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
   void vel_callback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 
-  // rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr vel_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
-  // std::queue<sensor_msgs::msg::Imu::SharedPtr> imu_buff_;
   std::queue<sensor_msgs::msg::NavSatFix::SharedPtr> gps_buff_;
 
   std::mutex mtx_;
@@ -69,4 +65,4 @@ private:
   void run_ekf();
 };
 
-} // namespace ekf_localizer
+} // namespace iekf_localizer

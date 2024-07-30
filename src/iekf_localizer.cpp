@@ -17,10 +17,6 @@ IEKFLocalizer::IEKFLocalizer()
 {
   rclcpp::QoS qos(10);
 
-  // imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-  //   "kitti/oxts/imu_rotated", qos,
-  //   std::bind(&IEKFLocalizer::imu_callback, this, std::placeholders::_1));
-
   gps_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>(
     "kitti/oxts/gps_shifted", qos,
     std::bind(&IEKFLocalizer::gps_callback, this, std::placeholders::_1));
@@ -39,18 +35,11 @@ IEKFLocalizer::IEKFLocalizer()
   U_ = (u_sigmas_ * u_sigmas_).matrix().asDiagonal();
 
   timer_ = this->create_wall_timer(
-    std::chrono::milliseconds(static_cast<int>(1.0 / freq_ * 1000)),
+    std::chrono::milliseconds(static_cast<int>(dt_ * 1000)),
     std::bind(&IEKFLocalizer::run_ekf, this));
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 }
-
-// void IEKFLocalizer::imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
-// {
-//   std::lock_guard<std::mutex> lock(mtx_);
-//   imu_buff_.push(msg);
-//   RCLCPP_INFO(get_logger(), "Get IMU");
-// }
 
 void IEKFLocalizer::gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
 {
@@ -72,7 +61,7 @@ void IEKFLocalizer::run_ekf()
   u_ = (u_noisy_ * dt_);
 
   // State estimation
-  X_ = X_.rplus(u_, J_x_, J_u_);
+  X_ = X_.plus(u_, J_x_, J_u_);
   P_ = J_x_ * P_ * J_x_.transpose() + J_u_ * U_ * J_u_.transpose();
 
   // Run gps update
@@ -97,10 +86,6 @@ void IEKFLocalizer::run_ekf()
       Eigen::Matrix<double, 3, 6> J_e_x;
       Eigen::Vector3d e = X_.act(Eigen::Vector3d::Zero(), J_e_x);
       Eigen::Matrix<double, 3, 6> H = J_e_x;
-
-      //// Change the covariance from right to left
-      //Matrix6d LP = X_.adj().inverse() * P_ * X_.adj().transpose().inverse();
-      //Eigen::Matrix3d E = H * LP * H.transpose();
       Eigen::Matrix3d E = H * P_ * H.transpose();
 
       // innovation
@@ -108,21 +93,14 @@ void IEKFLocalizer::run_ekf()
       Eigen::Matrix3d Z = E + R;  // innovation cov
 
       // Kalman gain
-      //Eigen::Matrix<double, 6, 3> K = LP * H.transpose() * Z.inverse();
       Eigen::Matrix<double, 6, 3> K = P_ * H.transpose() * Z.inverse();
 
       // Correction step
       manif::SE3Tangentd dx = K * z;
 
       // Update
-      //X_ = X_.lplus(dx);
-      //LP = LP - K * Z * K.transpose();
-
-      X_ = X_.rplus(dx);
+      X_ = X_.plus(dx);
       P_ = P_ - K * Z * K.transpose();
-
-      //// Change the covariance from the left to right
-      //P_ = X_.adj() * LP * X_.adj().transpose();
     }
   }
 
