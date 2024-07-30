@@ -1,10 +1,11 @@
-#include <cstdio>
+#include "iekf_localizer/iekf_localizer.hpp"
+
 
 int main(int argc, char ** argv)
 {
-  (void) argc;
-  (void) argv;
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<iekf_localizer::IEKFLocalizer>());
+  rclcpp::shutdown();
 
-  printf("hello world iekf_localizer package\n");
   return 0;
 }

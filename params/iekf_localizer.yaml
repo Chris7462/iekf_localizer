@@ -1,0 +1,17 @@
+iekf_localizer_node:
+  ros__parameters:
+    # Frequency of the IEKF publisher in Hz. Default is 40 Hz
+    freq: 40.0
+    # Initial state and state covariance
+    init:
+      xyz: [0.0, 0.0, 0.0]
+      rpy: [0.0, 0.0, 0.0]
+      P: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    # control noise covariance
+    # Q = diagonal(sigma_x^2, sigma_y^2, sigma_z^2, sigma_roll^2, sigma_pitch^2, sigma_yaw^2)
+    u_sigmas: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1] # standard deviation
