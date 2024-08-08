@@ -17,7 +17,7 @@ IEKFLocalizer::IEKFLocalizer()
 {
   rclcpp::QoS qos(10);
 
-  gps_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>(
+  gps_sub_ = this->create_subscription<kitti_msgs::msg::GeoPlanePoint>(
     "kitti/oxts/gps_shifted", qos,
     std::bind(&IEKFLocalizer::gps_callback, this, std::placeholders::_1));
 
@@ -52,7 +52,7 @@ IEKFLocalizer::IEKFLocalizer()
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 }
 
-void IEKFLocalizer::gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
+void IEKFLocalizer::gps_callback(const kitti_msgs::msg::GeoPlanePoint::SharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(mtx_);
   gps_buff_.push(msg);
@@ -89,7 +89,7 @@ void IEKFLocalizer::run_ekf()
       mtx_.unlock();
 
       // measurement
-      Eigen::Vector3d y(msg->latitude, msg->longitude, msg->altitude);
+      Eigen::Vector3d y(msg->local_coordinate.x, msg->local_coordinate.y, msg->local_coordinate.z);
       Eigen::Matrix3d R(msg->position_covariance.data());
 
       // expection
