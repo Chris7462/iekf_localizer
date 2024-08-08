@@ -17,6 +17,8 @@
 // manif header
 #include <manif/SE3.h>
 
+// local header
+#include <kitti_msgs/msg/geo_plane_point.hpp>
 
 namespace iekf_localizer
 {
@@ -37,16 +39,16 @@ private:
   double freq_;
   double dt_;
 
-  void gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
+  void gps_callback(const kitti_msgs::msg::GeoPlanePoint::SharedPtr msg);
   void vel_callback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 
-  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub_;
+  rclcpp::Subscription<kitti_msgs::msg::GeoPlanePoint>::SharedPtr gps_sub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr vel_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
-  std::queue<sensor_msgs::msg::NavSatFix::SharedPtr> gps_buff_;
+  std::queue<kitti_msgs::msg::GeoPlanePoint::SharedPtr> gps_buff_;
 
   std::mutex mtx_;
 
@@ -58,10 +60,12 @@ private:
   manif::SE3Tangentd u_;
   Vector6d u_noisy_;
   Array6d u_sigmas_;
-  Matrix6d Q_;
+  Matrix6d Q_, I_;
 
   // Declare the Jacobians of the motion wrt robot and control
-  manif::SE3d::Jacobian J_x_, J_u_;
+  manif::SE3d::Jacobian F_, W_; // F_ = J_x_, W_ = J_u_;
+  Matrix3x6d H_;
+  Eigen::Matrix3d V_;
 
   void run_ekf();
 };
