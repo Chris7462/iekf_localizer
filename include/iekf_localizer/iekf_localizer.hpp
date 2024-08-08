@@ -17,6 +17,8 @@
 // manif header
 #include <manif/SE3.h>
 
+// local header
+#include <kitti_msgs/msg/geo_plane_point.hpp>
 
 namespace iekf_localizer
 {
@@ -37,16 +39,16 @@ private:
   double freq_;
   double dt_;
 
-  void gps_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg);
+  void gps_callback(const kitti_msgs::msg::GeoPlanePoint::SharedPtr msg);
   void vel_callback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 
-  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr gps_sub_;
+  rclcpp::Subscription<kitti_msgs::msg::GeoPlanePoint>::SharedPtr gps_sub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr vel_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
-  std::queue<sensor_msgs::msg::NavSatFix::SharedPtr> gps_buff_;
+  std::queue<kitti_msgs::msg::GeoPlanePoint::SharedPtr> gps_buff_;
 
   std::mutex mtx_;
 
