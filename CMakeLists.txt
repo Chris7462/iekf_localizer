@@ -16,8 +16,13 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+
+# system
 find_package(Eigen3 REQUIRED)
 find_package(manif REQUIRED)
+
+# local
+find_package(kitti_msgs REQUIRED)
 
 add_executable(iekf_localizer_node
   src/iekf_localizer_node.cpp
@@ -35,7 +40,8 @@ ament_target_dependencies(iekf_localizer_node PUBLIC
   geometry_msgs
   tf2_ros
   tf2_eigen
-  tf2_geometry_msgs)
+  tf2_geometry_msgs
+  kitti_msgs)
 
 target_link_libraries(iekf_localizer_node PUBLIC
   Eigen3::Eigen
