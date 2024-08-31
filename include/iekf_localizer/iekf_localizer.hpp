@@ -60,10 +60,12 @@ private:
   manif::SE3Tangentd u_;
   Vector6d u_noisy_;
   Array6d u_sigmas_;
-  Matrix6d Q_;
+  Matrix6d Q_, I_;
 
   // Declare the Jacobians of the motion wrt robot and control
   manif::SE3d::Jacobian J_x_, J_u_;
+  Matrix3x6d H_;
+  Eigen::Matrix3d V_;
 
   void run_ekf();
 };

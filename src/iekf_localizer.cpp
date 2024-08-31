@@ -45,6 +45,8 @@ IEKFLocalizer::IEKFLocalizer()
   u_sigmas_ = Array6d(vec_sigmas.data());
   Q_ = (u_sigmas_ * u_sigmas_).matrix().asDiagonal();
 
+  I_.setIdentity();
+
   timer_ = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int>(dt_ * 1000)),
     std::bind(&IEKFLocalizer::run_ekf, this));
@@ -62,8 +64,8 @@ void IEKFLocalizer::vel_callback(const geometry_msgs::msg::TwistStamped::SharedP
 {
   std::lock_guard<std::mutex> lock(mtx_);
   u_noisy_ <<
-    msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z,
-    msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z;
+    msg->twist.linear.x, 0.0, 0.0,
+    0.0, 0.0, msg->twist.angular.z;
 }
 
 void IEKFLocalizer::run_ekf()
@@ -92,29 +94,32 @@ void IEKFLocalizer::run_ekf()
       Eigen::Vector3d y(msg->local_coordinate.x, msg->local_coordinate.y, msg->local_coordinate.z);
       Eigen::Matrix3d R(msg->position_covariance.data());
 
-      // expection
-      Matrix3x6d J_e_x;
-      Eigen::Vector3d e = X_.act(Eigen::Vector3d::Zero(), J_e_x);
-      Matrix3x6d H = J_e_x;
-      Eigen::Matrix3d E = H * P_ * H.transpose();
-
       // innovation
-      Eigen::Vector3d z = y - e;  // innovation
-      Eigen::Matrix3d Z = E + R;  // innovation cov
+      Eigen::Vector3d z = X_.inverse().act(y);  // X.inverse().act(ybar) = 0
+
+      // Jacobians
+      H_.topLeftCorner<3, 3>() = Eigen::Matrix3d::Identity();
+      H_.topRightCorner<3, 1>() = Eigen::Vector3d::Zero();
+      V_ = X_.inverse().rotation();
+
+      // innovation covariance
+      Eigen::Matrix3d S = H_ * P_ * H_.transpose() + V_ * R * V_;
 
       // Mahalanobis distance
       // qchisq(0.95, df=3) = 7.814728
-      double D = z.transpose() * Z.inverse() * z;
+      double D = z.transpose() * S.inverse() * z;
       if (D < 7.814728) {
         // Kalman gain
-        Matrix6x3d K = P_ * H.transpose() * Z.inverse();
+        Matrix6x3d K = P_ * H_.transpose() * S.inverse();
 
         // Correction step
         manif::SE3Tangentd dx = K * z;
 
         // Update
         X_ = X_.plus(dx);
-        P_ = P_ - K * Z * K.transpose();
+        // P_ = (I_ - K * H_) * P_; // This will have numerial issue
+        P_ = (I_ - K * H_) * P_ * (I_ - K * H_).transpose()
+             + K * V_ * R * V_.transpose() * K.transpose();
       } else {
         RCLCPP_INFO(
           get_logger(),
