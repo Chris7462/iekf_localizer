@@ -53,12 +53,12 @@ private:
 
   // State & Error covariance
   manif::SE_2_3d X_;
-  Matrix9d P_;
+  Matrix9d P_, P_L_;
 
   // Control
   manif::SE_2_3Tangentd u_noisy_;
   Array9d u_sigmas_;
-  Matrix9d Q_;
+  Matrix9d Q_, I_;
 
   // Gravity in the world frame
   Eigen::Vector3d g_;
@@ -72,7 +72,8 @@ private:
   manif::SE_2_3d::Jacobian J_x_x_;  // d(X * exp(u)) / dX
   manif::SE_2_3d::Jacobian J_x_u_;  // d(X * exp(u)) / du
   manif::SE_2_3d::Jacobian J_u_x_;  // du / dX, since u is a state-dependent vector
-  Matrix3x9d J_e_xi_;  // Jacobian
+  manif::SE_2_3d::Jacobian AdX_, AdXinv_;  // Adjoints
+  Matrix3x9d H_;  // Jacobian
 
   void run_ekf();
 };

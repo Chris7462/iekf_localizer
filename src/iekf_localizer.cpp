@@ -48,6 +48,8 @@ IEKFLocalizer::IEKFLocalizer()
   u_sigmas_ = Array9d(vec_sigmas.data());
   Q_ = (u_sigmas_ * u_sigmas_).matrix().asDiagonal();
 
+  I_.setIdentity();
+
   // gravity
   std::vector<double> g = declare_parameter("g", std::vector<double>({0.0, 0.0, -9.80665}));
   g_ = Eigen::Vector3d(g.data());
@@ -118,11 +120,17 @@ void IEKFLocalizer::run_ekf()
       Eigen::Vector3d y(msg->local_coordinate.x, msg->local_coordinate.y, msg->local_coordinate.z);
       Eigen::Matrix3d R(msg->position_covariance.data());
 
+      // transform covariance from right to left invariant
+      AdX_ = X_.adj();
+      AdXinv_ = X_.inverse().adj();
+      P_L_ = AdX_ * P_ * AdX_.transpose();
+
       // expection
-      Matrix3x9d J_e_x;
-      Eigen::Vector3d e = X_.act(Eigen::Vector3d::Zero(), J_e_x);
-      Matrix3x9d H = J_e_x;
-      Eigen::Matrix3d E = H * P_ * H.transpose();
+      Eigen::Vector3d e = X_.translation();
+      H_.setZero();
+      H_.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+      H_.block<3, 3>(0, 3) = manif::skew(-X_.translation());
+      Eigen::Matrix3d E = H_ * P_L_ * H_.transpose();
 
       // innovation
       Eigen::Vector3d z = y - e;  // innovation
@@ -130,22 +138,23 @@ void IEKFLocalizer::run_ekf()
 
       // Mahalanobis distance
       // qchisq(0.95, df=3) = 7.814728
-      double D = z.transpose() * Z.inverse() * z;
-      if (D < 7.814728) {
+    //double D = z.transpose() * Z.inverse() * z;
+    //if (D < 7.814728) {
         // Kalman gain
-        Matrix9x3d K = P_ * H.transpose() * Z.inverse();
+        Matrix9x3d K = P_L_ * H_.transpose() * Z.inverse();
 
         // Correction step
         manif::SE_2_3Tangentd dx = K * z;
 
         // Update
-        X_ = X_.plus(dx);
-        P_ = P_ - K * Z * K.transpose();
-      } else {
-        RCLCPP_INFO(
-          get_logger(),
-          "The Mahalanobis dist = %f is greater than the threshold. No ESKF correction!", D);
-      }
+        X_ = X_.lplus(dx);
+        P_L_ = (I_ - K * H_) * P_L_ * (I_ - K * H_).transpose() + K * R * K.transpose();
+        P_ = AdXinv_ * P_L_ * AdXinv_.transpose();
+    //} else {
+    //  RCLCPP_INFO(
+    //    get_logger(),
+    //    "The Mahalanobis dist = %f is greater than the threshold. No ESKF correction!", D);
+    //}
     }
   }
 
