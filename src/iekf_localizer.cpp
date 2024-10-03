@@ -103,7 +103,7 @@ void IEKFLocalizer::run_ekf()
       V_ = X_.inverse().rotation();
 
       // innovation covariance
-      Eigen::Matrix3d S = H_ * P_ * H_.transpose() + V_ * R * V_;
+      Eigen::Matrix3d S = H_ * P_ * H_.transpose() + V_ * R * V_.transpose();
 
       // Mahalanobis distance
       // qchisq(0.95, df=3) = 7.814728
