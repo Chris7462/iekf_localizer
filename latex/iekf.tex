@@ -1,0 +1,209 @@
+\documentclass[12pt, a4paper]{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{bm}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[top=2cm, bottom=2cm, left=2cm, right=2cm]{geometry}
+\usepackage{indentfirst}
+\usepackage{mathtools}
+
+\DeclareMathOperator{\Exp}{Exp}
+\DeclareMathOperator{\Log}{Log}
+
+% Define \mathpzc font lower case, \mathcal is for upper case
+\DeclareFontFamily{OT1}{pzc}{}
+\DeclareFontShape{OT1}{pzc}{m}{it}{<-> s * [1.10] pzcmi7t}{}
+\DeclareMathAlphabet{\mathpzc}{OT1}{pzc}{m}{it}
+
+
+\title{Invariant Extended Kalman Filter for SE3 Localization}
+\author{Yi-Chen Zhang}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+We consider the vehicle moving on the 2D plane in the 3D space. The robot
+receives control actions in the form of axial and angular velocities, and is
+able to measure its position using a GPS for instance.
+
+\section{State representation and motion control}
+The robot pose $\mathpzc{x}$ is in SE(3),
+\[
+  \mathpzc{x}=\begin{bmatrix}
+    \bm{R} & \bm{t}\\
+    \bm{0}^{T} & 1
+  \end{bmatrix}\in \text{SE(3)}
+\]
+where $\bm{R}\in$ SO(3) is the rotation and $\bm{t}\in\mathbb{R}^{3}$ is the
+translation.
+
+The control signal $\bm{u}$ is a twist in $\mathfrak{se}(3)$ comprising
+linear velocity $\bm{\nu}$ and angular velocity $\bm{\omega}$, with no
+lateral and vertical velocity components, integrated over the sampling time
+$\Delta t$.
+\[
+  \bm{u} = \begin{bmatrix}
+    \bm{\nu}\Delta t\\
+    \bm{\omega}\Delta t
+  \end{bmatrix}\in\mathfrak{se}(3)
+\]
+where $\bm{\nu}=[\nu_{x}, 0, 0]^{T}$ and $\bm{\omega}=[0, 0, \omega_{z}]^{T}$.
+
+The control is corrupted by additive Gaussian noise $\bm{\epsilon}$, with
+covariance $\bm{Q}$.
+\[
+  \bm{Q}=\begin{bmatrix}
+    \sigma_{x}^{2} & 0 & 0 & 0 & 0 & 0\\
+    0 & \sigma_{y}^{2} & 0 & 0 & 0 & 0\\
+    0 & 0 & \sigma_{z}^{2} & 0 & 0 & 0\\
+    0 & 0 & 0 & \sigma_{\theta}^{2} & 0 & 0\\
+    0 & 0 & 0 & 0 & \sigma_{\gamma}^{2} & 0\\
+    0 & 0 & 0 & 0 & 0 & \sigma_{\psi}^{2}
+  \end{bmatrix}
+\]
+This noise account for possible slippage.
+
+\section{State transition function and its derivative}
+At the arrival of a control $\bm{u}$, the vehicle pose is updated with the
+motion equation
+\[
+  \mathpzc{x}_{\mkern4mu pred} = \bm{f}(\mathpzc{x}, \bm{u}) = \mathpzc{x}\oplus\bm{u}=
+  \mathpzc{x}\Exp(\bm{u})
+\]
+\[
+  \bm{F}=
+  \frac{\prescript{\mathpzc{x}}{}{D}\bm{f}(\mathpzc{x},\bm{u})}{D\mathpzc{x}}=
+  \frac{\prescript{\mathpzc{x}}{}{D\mathpzc{x}\oplus\bm{u}}}{D\mathpzc{x}}=
+  \bm{J}^{\mathpzc{x}\oplus\bm{u}}_{\mathpzc{x}} =
+  \textbf{Ad}_{\Exp(\bm{u})}^{-1}
+\]
+\[
+  \bm{W}=
+  \frac{\prescript{\mathpzc{x}}{}{D}\bm{f}(\mathpzc{x},\bm{u})}{D\bm{u}}=
+  \frac{\prescript{\mathpzc{x}}{}{D\mathpzc{x}\oplus\bm{u}}}{D\bm{u}}=
+  \bm{J}^{\mathpzc{x}\oplus\bm{u}}_{\bm{u}}=\bm{J}_{r}(\bm{u})
+\]
+
+
+\section{Measurement function and its derivative}
+The GPS measurement is in $\mathbb{R}^{3}$, denoted as $\bm{y}$, and is put in
+Cartesian form for simplicity. The measurement noise $\bm{\delta}$ is zero mean
+Gaussian, and is specified with a covariance matrix $\bm{R}$.
+
+We notice the rigid motion action $\bm{y}=\bm{h}(\mathpzc{x})=\mathpzc{x}\cdot
+\bm{0}+\bm{\delta}$, which is the vehicle coordinates in the global frame. The
+measurement equation is
+\[
+  \bm{y} = \bm{h}(\mathpzc{x}) = \mathpzc{x}\cdot\bm{0}
+\]
+
+\begin{align*}
+  \bm{H} & =
+  \frac{\prescript{\scriptscriptstyle\mathcal{E}}{}{D}\bm{h}(\bm{\mathpzc{x}})}
+  {D \mathpzc{x}}\\
+  & = \lim_{\bm{\tau}\rightarrow \bm{0}} \frac{\bm{h}(\bm{\tau}\oplus\mathpzc{x})
+  \ominus \bm{h}(\mathpzc{x})}{\bm{\tau}}\\
+  & = \lim_{\bm{\tau}\rightarrow \bm{0}} \frac{(\Exp(\bm{\tau})\mathpzc{x})\cdot
+  \bm{0}-\mathpzc{x}\cdot \bm{0}}{\bm{\tau}}\\
+  & = \lim_{\bm{\tau}\rightarrow \bm{0}}\frac{\left(\begin{bmatrix}
+        \bm{I}+\bm{\phi}^{\wedge} & \bm{\rho}\\
+        \bm{0}^{T} & 1
+  \end{bmatrix}\begin{bmatrix}
+    \bm{R} & \bm{t}\\
+    \bm{0}^{T} & 1
+  \end{bmatrix}\right) \cdot \bm{0}-\begin{bmatrix}
+    \bm{R} & \bm{t}\\
+    \bm{0}^{T} & 1
+  \end{bmatrix}\cdot \bm{0}}{\bm{\tau}}\\
+  & = \lim_{\bm{\tau}\rightarrow \bm{0}}\frac{\begin{bmatrix}
+      (\bm{I}+\bm{\phi}^{\wedge})\bm{R} &
+      (\bm{I}+\bm{\phi}^{\wedge})\bm{t}+\bm{\rho}\\
+      \bm{0}^{T} & 1
+    \end{bmatrix}\cdot \bm{0}-\begin{bmatrix}
+      \bm{R} & \bm{t}\\
+      \bm{0}^{T} & 1
+  \end{bmatrix}\cdot \bm{0}}{\bm{\tau}}\\
+  & = \lim_{\bm{\tau}\rightarrow
+  \bm{0}}\frac{(\bm{I}+\bm{\phi}^{\wedge})\bm{t}+\bm{\rho}-\bm{t}}{\bm{\tau}}\\
+  & = \lim_{\bm{\tau}\rightarrow
+  \bm{0}}\frac{\bm{\phi}^{\wedge}\bm{t}+\bm{\rho}}{\bm{\tau}}\\
+  & = \frac{\partial(\bm{\phi}^{\wedge}\bm{t}+\bm{\rho})}{\partial
+  \bm{\tau}}\Bigg|_{\bm{\tau}=\bm{0}}\\
+  & = \left[\left.\frac{\partial(\bm{\phi}^{\wedge}\bm{t}+\bm{\rho})}
+      {\partial\bm{\rho}}\right|_{\bm{\rho}=\bm{0}},
+      \left.\frac{\partial(\bm{\phi}^{\wedge}\bm{t}+\bm{\rho})}
+      {\partial\bm{\phi}}\right|_{\bm{\phi}=\bm{0}}\right]\\
+  & = [\bm{I}, -\bm{t}^{\wedge}]
+\end{align*}
+
+\[
+  \bm{V}=\frac{\prescript{\scriptscriptstyle\mathcal{E}}{}{D}\bm{\delta}}
+  {D \bm{\delta}}=\bm{I}
+\]
+
+\section{Kalman filter algorithm}
+Now we are ready to implement invariant extended Kalman filter (IEKF) for the
+SE(3) localization. Given the initial state $\mathpzc{x}_{\mkern4mu 0}$ and
+state covariance $\bm{P}_{0}$, the IEKF algorithm is summarized as follows:\\
+
+\textbf{Prediction}:
+\begin{center}
+\begin{tabular}{ll}
+  Predicted state estimate: & $\mathpzc{x}_{\mkern4mu pred, t}=
+  \mathpzc{x}_{\mkern4mu t-1}\oplus\bm{u}_{t}$\\
+  Predicted error covariance: & $\prescript{\mathpzc{x}}{}{\bm{P}}_{pred, t}=
+  \bm{F}_{t}\prescript{\mathpzc{x}}{}{\bm{P}}_{t-1}\bm{F}_{t}^{T}+
+  \bm{W}_{t}\bm{Q}_{t}\bm{W}_{t}^{T}$
+\end{tabular}
+\end{center}
+
+\textbf{Update}:
+\begin{center}
+\begin{tabular}{ll}
+  Right to left invariant: &
+  $\prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{pred, t}=
+  \textbf{Ad}_{\mathpzc{x}}\prescript{\mathpzc{x}}{}{\bm{P}}_{pred, t}
+  \textbf{Ad}_{\mathpzc{x}}^{T}$\\
+  Innovation: & $\bm{z}_{t}=\bm{y}_{t}-\bm{h}(\mathpzc{x}_{\mkern4mu pred,t})$\\
+  Innovation covariance: & $\bm{S}_{t}=
+  \bm{H}_{t}\prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{pred,t}
+  \bm{H}_{t}^{T}+\bm{V}_{t}\bm{R}_{t}\bm{V}_{t}^{T}$\\
+  Kalman gain: & $\bm{K}_{t}=
+  \prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{pred,t}
+  \bm{H}_{t}^{T}\bm{S}_{t}^{-1}$\\
+  Observed error: & $\delta \bm{x}_{t}=\bm{K}_{t}\bm{z}_{t}$\\
+  Updated state estimate: & $\mathpzc{x}_{\mkern4mu t} = \delta \bm{x}_{t}\oplus
+  \mathpzc{x}_{\mkern4mu perd,t}$\\
+  Updated error covariance: &
+  $\prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{t}=
+  (\bm{I}-\bm{K}_{t}\bm{H}_{t})
+  \prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{pred,t}$\\
+  Left to right invariant: &
+  $\prescript{\mathpzc{x}}{}{\bm{P}}_{t}=
+  \textbf{Ad}_{\mathpzc{x}^{-1}}
+  \prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{t}
+  \textbf{Ad}_{\mathpzc{x}^{-1}}^{T}$\\
+\end{tabular}
+\end{center}
+
+For the updated error covariance, the Joseph formula should be employed for numerical stability. This can be expressed as follows:
+\[
+  \prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{t}=
+  (\bm{I}-\bm{K}_{t}\bm{H}_{t})
+  \prescript{\scriptscriptstyle\mathcal{E}}{}{\bm{P}}_{pred,t}
+  (\bm{I}-\bm{K}_{t}\bm{H}_{t})^{T}+
+  \bm{K}_{t}\bm{V}_{t}\bm{R}_{t}\bm{V}_{t}^{T}\bm{K}_{t}^{T}
+\]
+
+In the case where the measurement model is correct, the Kalman filter utilizes it for updates. Thus, a conditional statement for data association is introduced. The Mahalanobis distance is calculated for the measurement residual to determine if the measurement is suitable for updating:
+\[
+  (\bm{y}_{t}-\bm{h}(\mathpzc{x}_{\mkern4mu pred,t}))^{T}
+  \bm{S}_{t}^{-1}(\bm{y}_{t}-\bm{h}(\mathpzc{x}_{\mkern4mu pred,t}))
+  \leq D_{th},
+\]
+Here, $D_{th}$ represents a predetermined threshold. One can further show that the quadratic term is actually a $\chi_{m}^{2}$ distribution, where $m$ is the number of measurements.
+
+\end{document}
