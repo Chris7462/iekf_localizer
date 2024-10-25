@@ -17,6 +17,10 @@ IEKFLocalizer::IEKFLocalizer()
 {
   rclcpp::QoS qos(10);
 
+  imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+    "kitti/vehicle/imu_local", qos,
+    std::bind(&IEKFLocalizer::imu_callback, this, std::placeholders::_1));
+
   gps_sub_ = this->create_subscription<kitti_msgs::msg::GeoPlanePoint>(
     "kitti/vehicle/gps_local", qos,
     std::bind(&IEKFLocalizer::gps_callback, this, std::placeholders::_1));
@@ -31,27 +35,43 @@ IEKFLocalizer::IEKFLocalizer()
   // Init the state
   std::vector<double> xyz = declare_parameter("init.xyz", std::vector<double>());
   std::vector<double> rpy = declare_parameter("init.rpy", std::vector<double>());
-  X_ = manif::SE3d(
-    Eigen::Vector3d(xyz.data()), manif::SO3d(rpy[0], rpy[1], rpy[2]));
+  std::vector<double> vxyz = declare_parameter("init.vxyz", std::vector<double>());
+  X_ = manif::SE_2_3d(
+    Eigen::Vector3d(xyz.data()),
+    manif::SO3d(rpy[0], rpy[1], rpy[2]),
+    Eigen::Vector3d(vxyz.data()));
 
   // Init the state covariance
   std::vector<double> vec_P = declare_parameter("init.P", std::vector<double>());
-  P_ = Matrix6d(vec_P.data());
+  P_ = Matrix9d(vec_P.data());
 
   // no control inputs in the beginning
   u_noisy_.setZero();
   // Init control covariance
   std::vector<double> vec_sigmas = declare_parameter("u_sigmas", std::vector<double>());
-  u_sigmas_ = Array6d(vec_sigmas.data());
+  u_sigmas_ = Array9d(vec_sigmas.data());
   Q_ = (u_sigmas_ * u_sigmas_).matrix().asDiagonal();
 
   I_.setIdentity();
+
+  // gravity
+  std::vector<double> g = declare_parameter("g", std::vector<double>({0.0, 0.0, -9.80665}));
+  g_ = Eigen::Vector3d(g.data());
+  omega_prev_.setZero();
+  alpha_prev_ = -g_;
 
   timer_ = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int>(dt_ * 1000)),
     std::bind(&IEKFLocalizer::run_ekf, this));
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+}
+
+void IEKFLocalizer::imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(mtx_);
+  alpha_prev_ << msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z;
+  omega_prev_ << msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z;
 }
 
 void IEKFLocalizer::gps_callback(const kitti_msgs::msg::GeoPlanePoint::SharedPtr msg)
@@ -63,20 +83,36 @@ void IEKFLocalizer::gps_callback(const kitti_msgs::msg::GeoPlanePoint::SharedPtr
 void IEKFLocalizer::vel_callback(const geometry_msgs::msg::TwistStamped::SharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(mtx_);
-  u_noisy_ <<
-    msg->twist.linear.x, 0.0, 0.0,
-    0.0, 0.0, msg->twist.angular.z;
+  vel_buff_.push(msg);
 }
 
 void IEKFLocalizer::run_ekf()
 {
   RCLCPP_INFO_ONCE(get_logger(), "Running IEKF!");
   rclcpp::Time time_current = rclcpp::Node::now();
-  u_ = (u_noisy_ * dt_);
 
   // State estimation
-  X_ = X_.plus(u_, F_, W_);
-  P_ = F_ * P_ * F_.transpose() + W_ * Q_ * W_.transpose();
+  // get current state
+  auto R_k = X_.rotation();
+  auto v_k = X_.linearVelocity();
+  auto acc_k = alpha_prev_ + R_k.transpose() * g_;
+
+  // input control
+  Eigen::Vector3d accLin = dt_ * ((R_k.transpose()) * v_k) + 0.5 * dt_ * dt_ * acc_k;
+  Eigen::Vector3d gLin = (R_k.transpose()) * g_ * dt_;
+  Eigen::Matrix3d accLinCross = manif::skew(accLin);
+  Eigen::Matrix3d gCross = manif::skew(gLin);
+
+  u_noisy_ << accLin, omega_prev_ * dt_, acc_k * dt_;
+  X_ = X_.plus(u_noisy_, J_x_x_, J_x_u_); // X * exp(u), with Jacobians
+
+  // Prepare Jacobian of state-dependent control vector
+  J_u_x_.setZero();
+  J_u_x_.block<3, 3>(0, 3) = accLinCross;
+  J_u_x_.block<3, 3>(0, 6) = Eigen::Matrix3d::Identity() * dt_;
+  J_u_x_.block<3, 3>(6, 3) = gCross;
+  F_ = J_x_x_ + J_x_u_ * J_u_x_;  // chain rule for system model Jacobian
+  P_ = F_ * P_ * F_.transpose() + J_x_u_ * Q_ * J_x_u_.transpose();
 
   // Run gps update
   if (!gps_buff_.empty()) {
@@ -98,8 +134,8 @@ void IEKFLocalizer::run_ekf()
       Eigen::Vector3d z = X_.inverse().act(y);  // X.inverse().act(ybar) = 0
 
       // Jacobians
+      H_.setZero();
       H_.topLeftCorner<3, 3>() = Eigen::Matrix3d::Identity();
-      H_.topRightCorner<3, 1>() = Eigen::Vector3d::Zero();
       V_ = X_.inverse().rotation();
 
       // innovation covariance
@@ -107,24 +143,24 @@ void IEKFLocalizer::run_ekf()
 
       // Mahalanobis distance
       // qchisq(0.95, df=3) = 7.814728
-      double D = z.transpose() * S.inverse() * z;
-      if (D < 7.814728) {
+    //double D = z.transpose() * S.inverse() * z;
+    //if (D < 7.814728) {
         // Kalman gain
-        Matrix6x3d K = P_ * H_.transpose() * S.inverse();
+        Matrix9x3d K = P_ * H_.transpose() * S.inverse();
 
         // Correction step
-        manif::SE3Tangentd dx = K * z;
+        manif::SE_2_3Tangentd dx = K * z;
 
         // Update
         X_ = X_.plus(dx);
         // P_ = (I_ - K * H_) * P_; // This will have numerial issue
         P_ = (I_ - K * H_) * P_ * (I_ - K * H_).transpose()
              + K * V_ * R * V_.transpose() * K.transpose();
-      } else {
-        RCLCPP_INFO(
-          get_logger(),
-          "The Mahalanobis dist = %f is greater than the threshold. No ESKF correction!", D);
-      }
+    //} else {
+    //  RCLCPP_INFO(
+    //    get_logger(),
+    //    "The Mahalanobis dist = %f is greater than the threshold. No ESKF correction!", D);
+    //}
     }
   }
 
