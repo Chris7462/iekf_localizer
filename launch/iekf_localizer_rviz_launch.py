@@ -56,7 +56,6 @@ def generate_launch_description():
         }.items()
     )
 
-
     trajectory_server_gps_node = Node(
         package='trajectory_server',
         executable='trajectory_server_node',

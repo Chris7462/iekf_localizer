@@ -118,8 +118,8 @@ void IEKFLocalizer::run_ekf()
         // Update
         X_ = X_.plus(dx);
         // P_ = (I_ - K * H_) * P_; // This will have numerial issue
-        P_ = (I_ - K * H_) * P_ * (I_ - K * H_).transpose()
-             + K * V_ * R * V_.transpose() * K.transpose();
+        P_ = (I_ - K * H_) * P_ * (I_ - K * H_).transpose() +
+          K * V_ * R * V_.transpose() * K.transpose();
       } else {
         RCLCPP_INFO(
           get_logger(),
