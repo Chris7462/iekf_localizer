@@ -17,7 +17,7 @@ IEKFLocalizer::IEKFLocalizer()
 {
   rclcpp::QoS qos(10);
 
-  gps_sub_ = this->create_subscription<kitti_msgs::msg::GeoPlanePoint>(
+  gps_sub_ = this->create_subscription<av_msgs::msg::GeoPlanePoint>(
     "kitti/vehicle/gps_local", qos,
     std::bind(&IEKFLocalizer::gps_callback, this, std::placeholders::_1));
 
@@ -54,7 +54,7 @@ IEKFLocalizer::IEKFLocalizer()
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 }
 
-void IEKFLocalizer::gps_callback(const kitti_msgs::msg::GeoPlanePoint::SharedPtr msg)
+void IEKFLocalizer::gps_callback(const av_msgs::msg::GeoPlanePoint::SharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(mtx_);
   gps_buff_.push(msg);

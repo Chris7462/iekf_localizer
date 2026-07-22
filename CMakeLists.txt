@@ -23,7 +23,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(manif REQUIRED)
 # local
-find_package(kitti_msgs REQUIRED)
+find_package(av_msgs REQUIRED)
 
 add_executable(${PROJECT_NAME}_node
   src/iekf_localizer_node.cpp
@@ -40,7 +40,7 @@ target_link_libraries(${PROJECT_NAME}_node PRIVATE
   ${tf2_ros_TARGETS}
   ${tf2_eigen_TARGETS}
   ${tf2_geometry_msgs_TARGETS}
-  ${kitti_msgs_TARGETS}
+  ${av_msgs_TARGETS}
   Eigen3::Eigen
   ${manif_LIBRARIES})
 
